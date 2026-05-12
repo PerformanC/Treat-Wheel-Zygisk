@@ -1,0 +1,102 @@
+name: Issue report
+description: Report an issue
+title: "[BUG]: "
+labels: ["bug", "not confirmed"]
+
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "The Treat Wheel version you are suffering the bug with. It MUST NOT be a stable version."
+      placeholder: "e.g. 7b601c9c1b337bb75d9b5d076db1419744080cab (the commit hash)"
+    validations:
+      required: true
+
+  - type: input
+    id: reproducible_since
+    attributes:
+      label: Reproducible since version
+      description: "The Treat Wheel version since when the bug is reproducible. Following the same requires and retrieval as the field above. However, you will have to flash older CI versions of Treat Wheel to fill this field."
+      placeholder: "e.g. 7b601c9c1b337bb75d9b5d076db1419744080cab (the commit hash)"
+    validations:
+      required: true
+
+  - type: input
+    id: system_info
+    attributes:
+      label: System Information
+      description: "The affected device system information. You must provide the device full name and its model, its current Android version, the utilized ROM and its version, and the security patch date. You must follow the EXACT format of the placeholder below."
+      placeholder: "e.g. Samsung Galaxy S23 (SM-S911B/DS), Android 14, OneUI 6.1, February 1 of 2024"
+    validations:
+      required: true
+
+  - type: input
+    id: root_implementation_info
+    attributes:
+      label: Root Implementation Information
+      description: "The root implementation being used in the affected device. You must provide its name, creator, version, and link to its repository or website. You must follow the EXACT format of the placeholder below."
+      placeholder: "e.g. KernelSU by tiann, version 1.2.3, available at https://github.com/tiann/KernelSU"
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: Modules
+      description: "ALL modules that are installed in the affected device. Provide status (enabled or disabled), name, creator, version, and link to its repository or website. You must follow the EXACT format of the placeholder below. The modules must be separated by status, the enabled ones first, and then the disabled ones, if any."
+      placeholder: |
+        e.g.
+        Enabled. ReZygisk by The PerformanC Organization, version 1.2.3, available at https://github.com/PerformanC/ReZygisk
+        Disabled. ReLSPosed by ThePedroo, version 3.2.1, available at https://github.com/ThePedroo/ReLSPosed
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: "A clear and concise description of what the bug is."
+      placeholder: "e.g. When having the module loading traces hiding enabled, Chrome always ends up crashing on launch."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "The steps to reproduce the behavior. Provide a clear and concise description of how to reproduce the bug. You must follow the EXACT format of the placeholder below, and be detailed enough to allow reproducibility."
+      placeholder: |
+        1. Open Treat Wheel WebUI, enable the module loading traces hiding feature
+        3. Launch Chrome
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmations
+      description: The following confirmations are required to open a bug report. Not completing this checkmark's requirements will lead to the invalidation of this Issue.
+      options:
+        - label: I am currently using the latest CI version of Treat Wheel while reporting this Issue
+          required: true
+        - label: My environment meets the minimum requirements.
+          required: true
+        - label: I have ASSURED that no other Issue has been made about the same topic.
+          required: true
+        - label: I have acquired the [MDA](https://github.com/ThePedroo/DebugAssistant) redacted log, utilizing the debug version of Treat Wheel, and after creating this Issue, I will send it to performancorg@gmail.com or one of the project maintainers, with the GitHub Issue link included in the e-mail and the log attached.
+          required: true
+        - label: I have written, in all the fields above, using English, and I will be able to provide more information in English if required by the maintainers.
+          required: true
+        - label: I have READ and NOT SKIPPED any of the fields above.
+          required: true
+
+  - type: checkboxes
+    id: code_of_conduct
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/PerformanC/contributing/blob/main/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

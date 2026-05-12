@@ -1,0 +1,41 @@
+name: Feature request
+description: Ask for a new feature to be added
+title: "[FR]: "
+labels: ["enhancement", "not confirmed"]
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the feature is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason
+      description: Why should this feature be added?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmations
+      description: The following confirmations are required to open a feature request.
+      options:
+        - label: This feature is not already implemented.
+          required: true
+        - label: I have verified that this is not a duplicate feature request.
+          required: true
+
+  - type: checkboxes
+    id: code_of_conduct
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/PerformanC/contributing/blob/main/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
