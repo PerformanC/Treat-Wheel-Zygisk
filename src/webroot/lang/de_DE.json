@@ -1,0 +1,86 @@
+{
+  "langName": "Deutsch (Deutschland)",
+  "pages": {
+    "home": {
+      "title": "Start",
+      "workingModes": {
+        "working": "Arbeitet und verschleiert",
+        "crashed": "Absturz beim verstecken",
+        "ignoring": "Ignoriert",
+        "unknown": "Status nicht festzustellen",
+        "disabled": "Deaktiviert",
+        "incompatibleModules": "Inkompatible Module gefunden: %s",
+        "ciBuild": "Experimental-Build. Fehlfunktionen können nicht ausgeschlossen werden."
+      },
+      "version": "Version",
+      "rootImpl": "Root Implementierung",
+      "rootImpls": {
+        "multiple": "Mehrere"
+      }
+    },
+    "actions": {
+      "title": "Aktionen",
+      "flags": {
+        "experimental": "EXPERIMENTELL",
+        "futile": "AUFFÄLLIG"
+      },
+      "ignoreMode": {
+        "title": "Ignoriere alles und jeden",
+        "description": "Diese Option deaktiviert Treat Wheel vorübergehend. Kann ohne System-Neustart wieder deaktiviert werden."
+      },
+      "propSpoofing": {
+        "title": "Deaktiviere prop Imitation",
+        "description": "Diese Option deaktiviert Treat Wheel's Imitation für empfindliche und Custom-ROM bezogene props. System-Neustart erforderlich."
+      },
+      "gsiTraceHiding": {
+        "title": "Deaktiviere Verschleierung GSI-Spuren",
+        "description": "Diese Option deaktiviert Treat Wheel's Verschleierung von GSI-Spuren."
+      },
+      "zygoteMountInfoLeakFixing": {
+        "title": "Deaktiviere Zygote-Mountinfo Verschleierung",
+        "description": "Diese Option deaktiviert Treat Wheel's Zygote-Mountinfo Verschleierung. Erfordert Android 11 oder höher."
+      },
+      "mapsHiding": {
+        "title": "Deaktiviere MAPS-Verschleierung",
+        "description": "Diese Option deaktiviert Treat Wheel's MAPS-Verschleierung. Dieser Typ von Verschleierung ist auffällig, kann aber in manchen Fällen helfen."
+      },
+      "ReVancedModuleMountsHiding": {
+        "title": "Deaktiviere ReVanced-Modules Mount-Verschleierung",
+        "description": "Diese Option deaktiviert Treat Wheel's Mount-Verschleierung für ReVanced Module. ReVanced Module mssen explizit unterstützen von Treat Wheel ausgehangen zu werden."
+      },
+      "customFontLoading": {
+        "title": "Deaktiviere laden von benutzerdefinierten Schriftarten",
+        "description": "Diese Option deaktiviert Treat Wheel's Mechanismus zum laden von benutzerdefinierten Sytem-Schriftarten"
+      },
+      "denylistLogicInversion": {
+        "title": "Deaktiviere Denylist-Logik Umkehrung",
+        "description": "Diese Option deaktiviert Treat Wheel's Denylist-Logik Umkehrung, So das vor Apps auf der Liste der root Zugang versteckt wird, während Apps die nicht auf der Liste sind den root Zugang normal nutzen können. Ähnlich wie Magisk Kitsune's SuList wenn deativiert."
+      },
+      "moduleLoadingTracesHiding": {
+        "title": "Deaktiviere Verschleierung von Modul-Laderückständen",
+        "description": "Diese Option deaktiviert Treat Wheel's Verschleierung von Laderückständen, wleche Module beim laden hinterlassen können."
+      },
+      "fridaTracesHiding": {
+        "title": "Deaktiviere Verschleierung von Frida-Spuren",
+        "description": "Diese Option deaktiviert Treat Wheel's Verschleierung von Spuren, welche Frida bei der Injektion hinterlässt."
+      }
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "language": {
+        "title": "Sprache wechseln",
+        "description": "Wechsel zur ausgewählten Sprache."
+      },
+      "fullscreen": {
+        "title": "WebUI-Vollbildmodus deaktivieren",
+        "description": "Lässt die WebUI nicht den kompletten Bildschirm einnehmen"
+      },
+      "moduleDevelopers": "Modul Entwickler*innen",
+      "WebUIDevelopers": "WebUI Entwickler*innen",
+      "moduleLicense": "Modul Lizenz"
+    }
+  },
+  "globals": {
+    "unknown": "Unbekannt"
+  }
+}
