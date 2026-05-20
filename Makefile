@@ -2,6 +2,16 @@ BUILD_PATH = build/src
 ZYGISK_PATH = $(BUILD_PATH)/zygisk
 CMD_PATH = $(BUILD_PATH)/cmd
 
+ARCHS ?= arm64-v8a armeabi-v7a x86 x64
+ARCH ?= arm64-v8a
+
+API_LEVEL ?= 34
+
+TARGET_arm64-v8a = aarch64-linux-android$(API_LEVEL)
+TARGET_armeabi-v7a = armv7a-linux-androideabi$(API_LEVEL)
+TARGET_x86 = i686-linux-android$(API_LEVEL)
+TARGET_x64 = x86_64-linux-android$(API_LEVEL)
+
 CFILES_ZYGISK = src/lib/elf_util.c src/lib/hiding.c src/lib/main.c src/lib/rz_daemon.c src/lib/utils.c
 CFILES_CMD = src/cmd/main.c src/cmd/utils.c src/lib/utils.c src/system_properties/src/*.c
 
@@ -11,59 +21,51 @@ CFLAGS = -llog -fvisibility=hidden -fvisibility-inlines-hidden -Wpedantic     \
          -Wno-gnu-zero-variadic-macro-arguments                               \
 		 -Wno-gnu-statement-expression-from-macro-expansion
 
-.PHONY: all build debug pushToDevice installKsuOnly installMagiskOnly installApatchOnly installKsu installMagisk installApatch installKsuDebug installMagiskDebug installApatchDebug updateWebUI
 
-ifeq ($(IS_GITHUB_ACTION),true)
-CC := $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-STRIP := $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-CLANG := $(CC)
+ifeq ($(TERMUX_VERSION),)
+	ADB_PUSH := adb push
+	ADB_SHELL := adb shell 
+
+	ifeq ($(IS_GITHUB_ACTION),true)
+		CC ?= $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+		STRIP ?= $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+	else
+		CC ?= $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+		STRIP ?= $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+	endif
 else
-CC := $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-STRIP := $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-CLANG := $(CC)
+	ADB_PUSH := su -c cp -r
+	CC ?= clang
+	STRIP ?= llvm-strip
 endif
 
-all: CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed 
-all: build
+ifeq ($(BUILD_TYPE), debug)
+	CFLAGS += -DDEBUG -O0 -g
+else
+	CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
+endif
+
+
+CLANG ?= $(CC)
+
+.PHONY: all build release debug installModule installModuleAndReboot updateWebUI
+
+all: debug
+
+debug:
+	$(MAKE) -s build BUILD_TYPE=debug
+release:
+	$(MAKE) -s build BUILD_TYPE=release
 
 build:
-	@echo Creating zygisk directories...
+	@echo Creating required directories...
 	@mkdir -p $(ZYGISK_PATH) > /dev/null
-	@mkdir -p $(ZYGISK_PATH)/arm64-v8a > /dev/null
-	@mkdir -p $(ZYGISK_PATH)/armeabi-v7a > /dev/null
-	@mkdir -p $(ZYGISK_PATH)/x64 > /dev/null
-	@mkdir -p $(ZYGISK_PATH)/x86 > /dev/null
-
-	@echo Creating command-line directories...
 	@mkdir -p $(CMD_PATH) > /dev/null
-	@mkdir -p $(CMD_PATH)/arm64-v8a > /dev/null
-	@mkdir -p $(CMD_PATH)/armeabi-v7a > /dev/null
-	@mkdir -p $(CMD_PATH)/x64 > /dev/null
-	@mkdir -p $(CMD_PATH)/x86 > /dev/null
 
-	@echo Compiling zygisk module...
-	@$(CLANG) --target=aarch64-linux-android34    -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/arm64-v8a/libexample.so
-	@$(CLANG) --target=armv7a-linux-androideabi34 -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/armeabi-v7a/libexample.so
-	@$(CLANG) --target=x86_64-linux-android34     -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/x64/libexample.so
-	@$(CLANG) --target=i686-linux-android34       -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/x86/libexample.so
-
-	@echo Stripping zygisk module...
-	@$(STRIP) --strip-all $(ZYGISK_PATH)/arm64-v8a/libexample.so
-	@$(STRIP) --strip-all $(ZYGISK_PATH)/armeabi-v7a/libexample.so
-	@$(STRIP) --strip-all $(ZYGISK_PATH)/x64/libexample.so
-	@$(STRIP) --strip-all $(ZYGISK_PATH)/x86/libexample.so
-
-	@echo Compiling command-line assistance...
-	@$(CLANG) --target=aarch64-linux-android34    -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/arm64-v8a/treat-wheel
-	@$(CLANG) --target=armv7a-linux-androideabi34 -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/armeabi-v7a/treat-wheel
-	@$(CLANG) --target=x86_64-linux-android34     -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/x64/treat-wheel
-	@$(CLANG) --target=i686-linux-android34       -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/x86/treat-wheel
-
-	@echo Stripping command-line assistance...
-	@$(STRIP) --strip-all $(CMD_PATH)/arm64-v8a/treat-wheel
-	@$(STRIP) --strip-all $(CMD_PATH)/armeabi-v7a/treat-wheel
-	@$(STRIP) --strip-all $(CMD_PATH)/x64/treat-wheel
-	@$(STRIP) --strip-all $(CMD_PATH)/x86/treat-wheel
+	@for arch in $(ARCHS); do  \
+	  echo "Compiling for $$arch...";  \
+	  $(MAKE) -s compile_arch ARCH=$$arch;  \
+	done
 
 	@echo Copying module.prop file...
 	@cp $(BUILD_PATH)/../module.prop $(BUILD_PATH)/module.prop
@@ -81,6 +83,16 @@ build:
 	@rm -rf ../build/TreatWheel.zip
 	@(cd $(BUILD_PATH) && zip -r ../TreatWheel.zip .) > /dev/null
 
+compile_arch:
+	@mkdir -p $(ZYGISK_PATH)/$(ARCH) > /dev/null
+	@mkdir -p $(CMD_PATH)/$(ARCH) > /dev/null
+
+	@$(CLANG) --target=$(TARGET_$(ARCH)) -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/$(ARCH)/libexample.so
+	@$(CLANG) --target=$(TARGET_$(ARCH)) -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/$(ARCH)/treat-wheel
+
+	@$(STRIP) --strip-all $(ZYGISK_PATH)/$(ARCH)/libexample.so
+	@$(STRIP) --strip-all $(CMD_PATH)/$(ARCH)/treat-wheel
+
 clean:
 	@echo Cleaning build artifacts...
 	@rm -rf $(BUILD_PATH)/cmd
@@ -88,52 +100,21 @@ clean:
 	@rm -rf $(BUILD_PATH)/webroot
 	@rm -rf ../build/TreatWheel.zip > /dev/null
 
-debug: CFLAGS += -DDEBUG -O0 -g
-debug: build
+installModule: build
+	$(ADB_PUSH) build/TreatWheel.zip /data/local/tmp
+	@$(ADB_SHELL)su -M -c "magisk --install-module /data/local/tmp/TreatWheel.zip 2&>/dev/null"|| \
+	$(ADB_SHELL)su -c "ksud module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"||        \
+	$(ADB_SHELL)su -c "apd module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"           \
+	&& $(ADB_SHELL)su -c rm /data/local/tmp/TreatWheel.zip                                       \
+	|| echo "[X] Could not find valid CLI to install the module"
 
-pushToDevice:
-	@echo Pushing to device...
-	@adb push build/TreatWheel.zip /data/local/tmp/TreatWheel.zip
-
-installKsuOnly: pushToDevice
-	@echo Installing with KSU...
-	@adb shell su -c /data/adb/ksu/bin/ksud module install /data/local/tmp/TreatWheel.zip
-	@echo Rebooting...
-	@adb reboot
-
-installMagiskOnly: pushToDevice
-	@echo Installing with Magisk...
-	@adb shell su -c /debug_ramdisk/magisk --install-module /data/local/tmp/TreatWheel.zip
-	@echo Rebooting...
-	@adb reboot
-
-installApatchOnly: pushToDevice
-	@echo Installing with Apatch...
-	@adb shell su -c /data/adb/apd module install /data/local/tmp/TreatWheel.zip
-	@echo Rebooting...
-	@adb reboot
-
-installKsu: all
-installKsu: installKsuOnly
-
-installMagisk: all
-installMagisk: installMagiskOnly
-
-installApatch: all
-installApatch: installApatchOnly
-
-installKsuDebug: debug
-installKsuDebug: installKsuOnly
-
-installMagiskDebug: debug
-installMagiskDebug: installMagiskOnly
-
-installApatchDebug: debug
-installApatchDebug: installApatchOnly
+installModuleAndReboot: installModule
+	$(ADB_SHELL)su -c reboot
 
 updateWebUI:
 	@echo Updating web UI...
-	@adb shell su -c "rm -rf /data/local/tmp/webroot"
-	@adb push src/webroot /data/local/tmp/webroot
-	@adb shell su -c "rm -rf /data/adb/modules/treat_wheel/webroot"
-	@adb shell su -c "cp -r /data/local/tmp/webroot /data/adb/modules/treat_wheel"
+	@$(ADB_SHELL)su -c "rm -rf /data/local/tmp/webroot"
+	@$(ADB_PUSH) src/webroot /data/local/tmp/webroot
+	@$(ADB_SHELL)su -c "rm -rf /data/adb/modules/treat_wheel/webroot"
+	@$(ADB_SHELL)su -c "cp -r /data/local/tmp/webroot /data/adb/modules/treat_wheel"
+	@$(ADB_SHELL)su -c "rm -rf /data/local/tmp/webroot"
