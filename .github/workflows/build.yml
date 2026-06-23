@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup NDK_PATH
         run: echo "NDK_PATH=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
@@ -21,10 +23,16 @@ jobs:
       - name: Build with make
         env:
           IS_GITHUB_ACTION: true
-        run: make
+        run: make all -j$(nproc)
 
-      - name: Upload
+      - name: Upload release
         uses: actions/upload-artifact@v7
         with:
-          path: build/TreatWheel.zip
+          path: build/out/TreatWheel-v*-release.zip
+          archive: false
+
+      - name: Upload debug
+        uses: actions/upload-artifact@v7
+        with:
+          path: build/out/TreatWheel-v*-debug.zip
           archive: false
