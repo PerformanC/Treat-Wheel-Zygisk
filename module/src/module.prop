@@ -1,7 +1,7 @@
-id=treat_wheel
-name=Treat Wheel
-version=v0.0.10
-versionCode=0010
+id=${moduleId}
+name=${moduleName}
+version=${versionName}
+versionCode=${versionCode}
 author=ThePedroo
 description=The wheel to reinvent the new light.
 updateJson=https://raw.githubusercontent.com/ThePedroo/RemoteFiles/refs/heads/main/TreatWheel/update.json

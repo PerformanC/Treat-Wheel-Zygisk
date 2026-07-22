@@ -1,16 +1,4 @@
-BUILD_PATH = build/src
-ZYGISK_PATH = $(BUILD_PATH)/zygisk
-CMD_PATH = $(BUILD_PATH)/cmd
-
-ARCHS ?= arm64-v8a armeabi-v7a x86 x64
-ARCH ?= arm64-v8a
-
-API_LEVEL ?= 34
-
-TARGET_arm64-v8a = aarch64-linux-android$(API_LEVEL)
-TARGET_armeabi-v7a = armv7a-linux-androideabi$(API_LEVEL)
-TARGET_x86 = i686-linux-android$(API_LEVEL)
-TARGET_x64 = x86_64-linux-android$(API_LEVEL)
+include common.mk
 
 CFILES_ZYGISK = src/lib/elf_util.c src/lib/hiding.c src/lib/main.c src/lib/rz_daemon.c src/lib/utils.c
 CFILES_CMD = src/cmd/main.c src/cmd/utils.c src/lib/utils.c src/system_properties/src/*.c
@@ -21,67 +9,63 @@ CFLAGS = -llog -fvisibility=hidden -fvisibility-inlines-hidden -Wpedantic     \
          -Wno-gnu-zero-variadic-macro-arguments                               \
 		 -Wno-gnu-statement-expression-from-macro-expansion
 
-
-ifeq ($(TERMUX_VERSION),)
-	ADB_PUSH := adb push
-	ADB_SHELL := adb shell 
-
-	ifeq ($(IS_GITHUB_ACTION),true)
-		CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	else
-		CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	endif
-else
-	ADB_PUSH := su -c cp -r
-	CC ?= clang
-	STRIP ?= llvm-strip
-endif
-
 ifeq ($(BUILD_TYPE), debug)
 	CFLAGS += -DDEBUG -O0 -g
 else
 	CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
 endif
 
+ifeq ($(TERMUX_VERSION),)
+	ADB_PUSH := adb push
+	ADB_SHELL := adb shell 
+else
+	ADB_PUSH := su -c cp -r
+endif
 
-CLANG ?= $(CC)
+VERSION ?= $(VER_CODE)-$(COMMIT_HASH)-$(BUILD_TYPE)
+MODULE_ZIP ?= TreatWheel-$(VER_NAME)-$(VERSION).zip
+ZIP_OUT ?= $(BUILD_DIR)/out/$(MODULE_ZIP)
 
 .PHONY: all build release debug installModule installModuleAndReboot updateWebUI
-
-all: debug
 
 debug:
 	$(MAKE) -s build BUILD_TYPE=debug
 release:
 	$(MAKE) -s build BUILD_TYPE=release
 
+all: debug release
+
 build:
 	@echo Creating required directories...
 	@mkdir -p $(ZYGISK_PATH) > /dev/null
 	@mkdir -p $(CMD_PATH) > /dev/null
+	@mkdir -p $(BUILD_DIR)/out > /dev/null
+	@cp -r module/src/* $(TYPE_DIR)
 
 	@for arch in $(ARCHS); do  \
 	  echo "Compiling for $$arch...";  \
 	  $(MAKE) -s compile_arch ARCH=$$arch;  \
 	done
 
-	@echo Copying module.prop file...
-	@cp $(BUILD_PATH)/../module.prop $(BUILD_PATH)/module.prop
+	@echo Preparing module.prop...
+	@sed -e 's/$${moduleId}/$(MODULE_ID)/g'                                             \
+	    -e 's/$${moduleName}/$(MODULE_NAME)/g'                                          \
+	    -e 's/$${versionName}/$(VER_NAME) ($(VERSION))/g' \
+	    -e 's/$${versionCode}/$(VER_CODE)/g'                                            \
+	    module/src/module.prop > $(TYPE_DIR)/module.prop
 
 	@echo Creating zip...
 
-	@rm -rf $(BUILD_PATH)/webroot
-	@cp -r src/webroot $(BUILD_PATH)
+	@rm -rf $(TYPE_DIR)/webroot
+	@cp -r src/webroot $(TYPE_DIR)
 
 	@if [ "$(IS_GITHUB_ACTION)" = "true" ]; then \
 		echo Detected CI environment. Modifying web UI for CI build...; \
-		sed -i 's/ display: none;//g' $(BUILD_PATH)/webroot/js/pages/home/index.html; \
+		sed -i 's/ display: none;//g' $(TYPE_DIR)/webroot/js/pages/home/index.html; \
 	fi
 
-	@rm -rf ../build/TreatWheel.zip
-	@(cd $(BUILD_PATH) && zip -r ../TreatWheel.zip .) > /dev/null
+	@rm -rf $(ZIP_OUT)
+	@(cd $(TYPE_DIR) && zip -r ../out/$(MODULE_ZIP) .) > /dev/null
 
 compile_arch:
 	@mkdir -p $(ZYGISK_PATH)/$(ARCH) > /dev/null
@@ -95,17 +79,14 @@ compile_arch:
 
 clean:
 	@echo Cleaning build artifacts...
-	@rm -rf $(BUILD_PATH)/cmd
-	@rm -rf $(BUILD_PATH)/zygisk
-	@rm -rf $(BUILD_PATH)/webroot
-	@rm -rf ../build/TreatWheel.zip > /dev/null
+	@rm -rf $(BUILD_DIR)
 
 installModule: build
-	$(ADB_PUSH) build/TreatWheel.zip /data/local/tmp
-	@$(ADB_SHELL)su -M -c "magisk --install-module /data/local/tmp/TreatWheel.zip 2&>/dev/null"|| \
-	$(ADB_SHELL)su -c "ksud module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"||        \
-	$(ADB_SHELL)su -c "apd module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"           \
-	&& $(ADB_SHELL)su -c rm /data/local/tmp/TreatWheel.zip                                       \
+	$(ADB_PUSH) $(ZIP_OUT) /data/local/tmp
+	@$(ADB_SHELL)su -M -c "magisk --install-module /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"|| \
+	$(ADB_SHELL)su -c "ksud module install /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"||        \
+	$(ADB_SHELL)su -c "apd module install /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"           \
+	&& $(ADB_SHELL)su -c rm /data/local/tmp/$(MODULE_ZIP)                                       \
 	|| echo "[X] Could not find valid CLI to install the module"
 
 installModuleAndReboot: installModule

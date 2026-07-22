@@ -2,12 +2,13 @@
 
 !.github/
 !.github/**
-!build/
-!build/**
+!module/
+!module/**
 !src/
 !src/**
 !.gitignore
 !LICENSE
 !Makefile
+!common.mk
 !NOTICE
 !README.md
