@@ -292,7 +292,9 @@ static bool foreach_prop(prop_area *pa, prop_bt *trie, void (*fn)(const prop_inf
   }
 
   if (atomic_load_explicit(&trie->prop, memory_order_relaxed)) {
-    fn(to_info(pa, &trie->prop), cookie);
+    prop_info *info = to_info(pa, &trie->prop);
+    if (!info) return false;
+    fn(info, cookie);
   }
 
   if (atomic_load_explicit(&trie->children, memory_order_relaxed)) {
