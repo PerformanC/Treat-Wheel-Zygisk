@@ -30,8 +30,8 @@ ifeq ($(TERMUX_VERSION),)
 		CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
 		STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
 	else
-		CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+		CC = $(ANDROID_HOME)/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+		STRIP = $(ANDROID_HOME)/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
 	endif
 else
 	ADB_PUSH := su -c cp -r
@@ -42,7 +42,7 @@ endif
 ifeq ($(BUILD_TYPE), debug)
 	CFLAGS += -DDEBUG -O0 -g
 else
-	CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
+	CFLAGS += -Os -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
 endif
 
 
