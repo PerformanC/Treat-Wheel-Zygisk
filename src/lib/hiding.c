@@ -187,10 +187,11 @@ int do_maps_hiding(struct api_table *api_table, JNIEnv *tw_env) {
   for (size_t i = 0; i < g_maps->size; i++) {
     struct map *map = &g_maps->maps[i];
 
-    if (map->dev != st.st_dev || !str_starts_with(map->path, "/system/") ||
-        !str_starts_with(map->path, "/vendor/") ||
-        !str_starts_with(map->path, "/product/") ||
-        !str_starts_with(map->path, "/system_ext/")
+    if (map->path == NULL || map->dev != st.st_dev ||
+        str_starts_with(map->path, "/data/adb/modules/rezygisk/") ||
+        str_starts_with(map->path, "/data/adb/modules/treat_wheel/") ||
+        (!str_starts_with(map->path, "/data/adb/") &&
+        !str_starts_with(map->path, "/data/local/tmp/"))
     ) {
       continue;
     }
