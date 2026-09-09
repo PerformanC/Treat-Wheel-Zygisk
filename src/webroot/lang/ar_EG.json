@@ -1,0 +1,86 @@
+{
+  "langName": "Arabic (العربية)",
+  "pages": {
+    "home": {
+      "title": "الرئيسية",
+      "workingModes": {
+        "working": "يعمل ويقوم بالإخفاء",
+        "crashed": "توقف عن العمل أثناء الإخفاء",
+        "ignoring": "في وضع التجاهل",
+        "unknown": "غير قادر على التحديد",
+        "disabled": "معطل",
+        "incompatibleModules": "تم اكتشاف إضافات غير متوافقة: %s",
+        "ciBuild": "تم اكتشاف إصدار تجريبي. قد لا تعمل بعض الميزات كما هو متوقع."
+      },
+      "version": "الإصدار",
+      "rootImpl": "تطبيق الروت",
+      "rootImpls": {
+        "multiple": "متعدد"
+      }
+    },
+    "actions": {
+      "title": "الإجراءات",
+      "flags": {
+        "experimental": "تجريبي",
+        "futile": "غير مجدي"
+      },
+      "ignoreMode": {
+        "title": "تجاهل كل شيء والجميع",
+        "description": "هذا الخيار سيجعل Treat Wheel معطلاً مؤقتًا. يمكن إعادة تمكينه دون إعادة التشغيل، لكن تمكينه يجعل جميع خيارات الإخفاء غير مفيدة حتى يتم تعطيله."
+      },
+      "propSpoofing": {
+        "title": "تعطيل تزييف الخصائص (prop spoofing)",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن تزييف الخصائص الحساسة والخصائص المتعلقة بالرومات المخصصة. تتطلب إعادة تشغيل لتطبيق هذا التبديل."
+      },
+      "gsiTraceHiding": {
+        "title": "تعطيل إخفاء آثار GSI",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إخفاء آثار GSI."
+      },
+      "zygoteMountInfoLeakFixing": {
+        "title": "تعطيل إصلاح تسريب mountinfo في Zygote",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إصلاح التسريب، أي جعله كما هو متوقع في الأنظمة غير المروّتة، تسريب mountinfo الذي ينشئه Zygote. يتطلب أندرويد 11 أو أعلى."
+      },
+      "mapsHiding": {
+        "title": "تعطيل إخفاء maps",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إخفاء عمليات التعيين المشبوهة. هذا النوع من الإخفاء غير مجدي، لكنه يساعد في تجاوز بعض الاكتشافات."
+      },
+      "ReVancedModuleMountsHiding": {
+        "title": "تعطيل إخفاء نقاط تركيب إضافات ReVanced",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إخفاء نقاط التركيب التي تنشئها إضافات ReVanced بشكل عام. يجب أن تدعم إضافات ReVanced إضافة Treat Wheel صراحةً ليتمكن من فك تركيبها."
+      },
+      "customFontLoading": {
+        "title": "تعطيل تحميل الخطوط المخصصة",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن تحميل الخطوط المخصصة من النظام."
+      },
+      "denylistLogicInversion": {
+        "title": "تعطيل عكس منطق DenyList",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن عكس قائمة الرفض (DenyList)، بحيث يتم إخفاء الروت عن التطبيقات الموجودة في قائمة الرفض، بينما لن يتم إخفاؤه عن التطبيقات غير الموجودة فيها. بشكل مشابه لـ SuList في Magisk Kitsune عندما يكون هذا الخيار معطلًا."
+      },
+      "moduleLoadingTracesHiding": {
+        "title": "تعطيل إخفاء آثار تحميل الإضافات",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إخفاء الآثار التي تولدها بعض الإضافات أثناء تحميلها."
+      },
+      "fridaTracesHiding": {
+        "title": "تعطيل إخفاء آثار Frida",
+        "description": "هذا الخيار سيجعل Treat Wheel يتوقف عن إخفاء آثار الحقن التي تولدها Frida."
+      }
+    },
+    "settings": {
+      "title": "الإعدادات",
+      "language": {
+        "title": "تغيير اللغة",
+        "description": "تغيير لغة واجهة المستخدم (WebUI) إلى اللغة المحددة."
+      },
+      "fullscreen": {
+        "title": "تعطيل وضع ملء الشاشة في واجهة المستخدم",
+        "description": "هذا الخيار سيجعل واجهة المستخدم (WebUI) لا تملأ الشاشة بأكملها."
+      },
+      "moduleDevelopers": "مطورو الإضافة",
+      "WebUIDevelopers": "مطورو واجهة المستخدم",
+      "moduleLicense": "ترخيص الإضافة"
+    }
+  },
+  "globals": {
+    "unknown": "غير معروف"
+  }
+}
