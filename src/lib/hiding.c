@@ -542,7 +542,7 @@ int do_atexit_hiding(struct api_table *api_table, JNIEnv *tw_env) {
   size_t old_bytes = _page_end(old_size * sizeof(struct AtExitEntry));
   size_t new_bytes = _page_end(atexit_array->size_ * sizeof(struct AtExitEntry));
   if (new_bytes < old_bytes) {
-    madvise(atexit_array->array_ + new_bytes, old_bytes - new_bytes, MADV_DONTNEED);
+    madvise((char *)atexit_array->array_ + new_bytes, old_bytes - new_bytes, MADV_DONTNEED);
   }
 
   set_writable(atexit_array, false, 0, atexit_array->size_);
