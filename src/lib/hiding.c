@@ -499,6 +499,17 @@ int do_atexit_hiding(struct api_table *api_table, JNIEnv *tw_env) {
     }
   }
 
+  pthread_mutex_t *atexit_lock = (pthread_mutex_t *)getSymbAddressByPrefix(libc, "_ZL13g_atexit_lock");
+  if (!atexit_lock) {
+    LOGE("AH: Failed to find atexit lock");
+
+    elf_destroy(libc);
+
+    return 0;
+  }
+
+  pthread_mutex_lock(atexit_lock);
+
   set_writable(atexit_array, true, 0, atexit_array->size_);
   size_t old_size = atexit_array->size_;
 
@@ -546,6 +557,8 @@ int do_atexit_hiding(struct api_table *api_table, JNIEnv *tw_env) {
   }
 
   set_writable(atexit_array, false, 0, atexit_array->size_);
+
+  pthread_mutex_unlock(atexit_lock);
 
   elf_destroy(libc);
 
