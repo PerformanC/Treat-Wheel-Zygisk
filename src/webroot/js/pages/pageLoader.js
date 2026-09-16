@@ -574,6 +574,7 @@ export function getStrings(pageId, forceDefault = false) {
 
 export function setLanguage(langId) {
   localStorage.setItem(`/${moduleName}/language`, langId)
+  document.documentElement.dir = langId === 'ar_EG' ? 'rtl' : 'ltr'
 
   sufferedUpdate.length = 0
 }
