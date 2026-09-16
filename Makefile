@@ -13,36 +13,36 @@ TARGET_x86 = i686-linux-android$(API_LEVEL)
 TARGET_x64 = x86_64-linux-android$(API_LEVEL)
 
 CFILES_ZYGISK = src/lib/elf_util.c src/lib/hiding.c src/lib/main.c src/lib/rz_daemon.c src/lib/utils.c
-CFILES_CMD = src/cmd/main.c src/cmd/utils.c src/lib/utils.c src/system_properties/src/*.c
+CFILES_CMD = src/cmd/main.c src/cmd/utils.c src/lib/utils.c $(wildcard src/system_properties/src/*.c)
 
 CFLAGS = -llog -fvisibility=hidden -fvisibility-inlines-hidden -Wpedantic     \
          -Wall -Wextra -Werror -Wformat -Wuninitialized -Wshadow -std=c99     \
          -Wno-unused-function -D_GNU_SOURCE -fPIC -Wno-c2x-extensions         \
          -Wno-gnu-zero-variadic-macro-arguments                               \
-		 -Wno-gnu-statement-expression-from-macro-expansion
+         -Wno-gnu-statement-expression-from-macro-expansion
 
 
 ifeq ($(TERMUX_VERSION),)
-	ADB_PUSH := adb push
-	ADB_SHELL := adb shell 
+  ADB_PUSH := adb push
+  ADB_SHELL := adb shell
 
-	ifeq ($(IS_GITHUB_ACTION),true)
-		CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	else
-		CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	endif
+  ifeq ($(IS_GITHUB_ACTION),true)
+    CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+    STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+  else
+    CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+    STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+  endif
 else
-	ADB_PUSH := su -c cp -r
-	CC ?= clang
-	STRIP ?= llvm-strip
+  ADB_PUSH := su -c cp -r
+  CC ?= clang
+  STRIP ?= llvm-strip
 endif
 
 ifeq ($(BUILD_TYPE), debug)
-	CFLAGS += -DDEBUG -O0 -g
+  CFLAGS += -DDEBUG -O0 -g
 else
-	CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
+  CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
 endif
 
 
@@ -76,8 +76,8 @@ build:
 	@cp -r src/webroot $(BUILD_PATH)
 
 	@if [ "$(IS_GITHUB_ACTION)" = "true" ]; then \
-		echo Detected CI environment. Modifying web UI for CI build...; \
-		sed -i 's/ display: none;//g' $(BUILD_PATH)/webroot/js/pages/home/index.html; \
+	  echo Detected CI environment. Modifying web UI for CI build...; \
+	  sed -i 's/ display: none;//g' $(BUILD_PATH)/webroot/js/pages/home/index.html; \
 	fi
 
 	@rm -rf ../build/TreatWheel.zip
