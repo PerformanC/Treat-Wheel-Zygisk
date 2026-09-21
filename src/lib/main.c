@@ -287,6 +287,10 @@ void zygisk_module_entry(struct api_table *table, JNIEnv *env) {
 
 static bool has_crashed = false;
 
+/* INFO: mnt string caching system */
+static char mnt_string[1024] = { 0 };
+static char *mnt_line = NULL;
+
 /* INFO: RVU system */
 static char **rvx_mounts = NULL;
 static size_t rvx_mounts_size = 0;
@@ -666,6 +670,44 @@ void zygisk_companion_entry(int module_fd) {
         LOGD("Started now Treat Wheel execution for process with pid %d. Now, %zu processes are being tracked.", ppid, process_states_size);
 
         pthread_mutex_unlock(&process_states_lock);
+      }
+    } else if (op == DAEMON_GET_MNT_STRING) {
+      if (mnt_string[0] == '\0') {
+        /* INFO: First process to hide it, so ask to provide the mnt string */
+        uint8_t ret_state = 0;
+        write_loop(module_fd, &ret_state, sizeof(ret_state));
+
+        if (read_loop(module_fd, &mnt_line, sizeof(mnt_line)) == -1) {
+          PLOGE("Read mnt_line");
+
+          goto cleanup;
+        }
+
+        if (read_loop(module_fd, mnt_string, sizeof(mnt_string)) == -1) {
+          PLOGE("Read mnt_string");
+
+          goto cleanup;
+        }
+
+        continue;
+      }
+
+      /* INFO: Already have the mnt string, just send it */
+      uint8_t ret_state = 1;
+      write_loop(module_fd, &ret_state, sizeof(ret_state));
+
+      /* INFO: The address of the mnt line */
+      if (write_loop(module_fd, &mnt_line, sizeof(mnt_line)) == -1) {
+        PLOGE("Write mnt_line");
+
+        goto cleanup;
+      }
+
+      /* INFO: The content of the mnt line */
+      if (write_loop(module_fd, mnt_string, sizeof(mnt_string)) == -1) {
+        PLOGE("Write mnt_string");
+
+        goto cleanup;
       }
     } else if (op == DAEMON_GET_RVX_MOUNTS) {
       uint32_t ppid;
