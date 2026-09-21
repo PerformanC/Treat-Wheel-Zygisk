@@ -636,20 +636,27 @@ int do_frida_hiding(struct api_table *api_table, JNIEnv *tw_env) {
 
   void (*protected_data_protect)(void) = (void (*)(void))getSymbAddress(linker, "__dl__ZN18ProtectedDataGuardD2Ev");
   if (!protected_data_protect) {
-    LOGE("FH: Failed to find protected_data_protect");
+    protected_data_protect = (void (*)(void))getSymbAddress(linker, "__dl__ZN18ProtectedDataGuardD1Ev");
+  
+    if (!protected_data_protect) {
+      LOGE("FH: Failed to find protected_data_protect");
 
-    elf_destroy(linker);
+      elf_destroy(linker);
 
-    return 0;
+      return 0;
+    }
   }
 
   void (*protected_data_unprotect)(void) = (void (*)(void))getSymbAddress(linker, "__dl__ZN18ProtectedDataGuardC2Ev");
   if (!protected_data_unprotect) {
-    LOGE("FH: Failed to find protected_data_unprotect");
+    protected_data_unprotect = (void (*)(void))getSymbAddress(linker, "__dl__ZN18ProtectedDataGuardC1Ev");
+    if (!protected_data_unprotect) {
+      LOGE("FH: Failed to find protected_data_unprotect");
 
-    elf_destroy(linker);
+      elf_destroy(linker);
 
-    return 0;
+      return 0;
+    }
   }
 
   const char *(*get_realpath)(void *) = (const char *(*)(void *))getSymbAddress(linker, "__dl__ZNK6soinfo12get_realpathEv");
