@@ -21,18 +21,27 @@ CFLAGS = -llog -fvisibility=hidden -fvisibility-inlines-hidden -Wpedantic     \
          -Wno-gnu-zero-variadic-macro-arguments                               \
 		 -Wno-gnu-statement-expression-from-macro-expansion
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+	NDK_HOST_TAG := darwin-x86_64
+else ifeq ($(UNAME_S),Linux)
+	NDK_HOST_TAG := linux-x86_64
+else
+$(error Unsupported build host '$(UNAME_S)'. Expected Darwin or Linux.)
+endif
 
 ifeq ($(TERMUX_VERSION),)
 	ADB_PUSH := adb push
 	ADB_SHELL := adb shell 
 
 	ifeq ($(IS_GITHUB_ACTION),true)
-		CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+		NDK_ROOT := $(ANDROID_NDK_HOME)
 	else
-		CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+		NDK_ROOT := $(ANDROID_HOME)/ndk/29.0.14206865
 	endif
+	NDK_BIN := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_HOST_TAG)/bin
+	CC := $(NDK_BIN)/clang
+	STRIP := $(NDK_BIN)/llvm-strip
 else
 	ADB_PUSH := su -c cp -r
 	CC ?= clang
