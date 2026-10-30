@@ -40,7 +40,8 @@ export async function load() {
   })
 
   const tw_webui_fullscreen_switch = document.getElementById('tw_webui_fullscreen_switch')
-  if (WebUIConfig.disableFullscreen) tw_webui_fullscreen_switch.checked = true
+  /* INFO: The saved setting decides, in both directions */
+  tw_webui_fullscreen_switch.checked = !!WebUIConfig.disableFullscreen
 
   utils.addListener(tw_webui_fullscreen_switch, 'click', () => {
     /* INFO: This is swapped, as it meant to disable the fullscreen */
