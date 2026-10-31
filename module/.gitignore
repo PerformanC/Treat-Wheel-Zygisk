@@ -9,4 +9,3 @@
 !src/service.sh
 !src/uninstall.sh
 !.gitignore
-!/module.prop
