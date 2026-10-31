@@ -287,9 +287,12 @@ void zygisk_module_entry(struct api_table *table, JNIEnv *env) {
 
 static bool has_crashed = false;
 
-/* INFO: mnt string caching system */
+/* INFO: mnt string caching system. The line pointer is a zygote virtual address.
+          It dies when init restarts zygote (surfaceflinger's onrestart does this)
+          while this companion keeps running. */
 static char mnt_string[1024] = { 0 };
 static char *mnt_line = NULL;
+static uint8_t mnt_cache_state = MNT_CACHE_EMPTY;
 
 /* INFO: RVU system */
 static char **rvx_mounts = NULL;
@@ -671,11 +674,34 @@ void zygisk_companion_entry(int module_fd) {
 
         pthread_mutex_unlock(&process_states_lock);
       }
+    } else if (op == DAEMON_CLEAR_MNT_STRING) {
+      /* INFO: Caller found the cached address unmapped in this zygote. */
+      memset(mnt_string, 0, sizeof(mnt_string));
+      mnt_line = NULL;
+      mnt_cache_state = MNT_CACHE_EMPTY;
     } else if (op == DAEMON_GET_MNT_STRING) {
-      if (mnt_string[0] == '\0') {
-        /* INFO: First process to hide it, so ask to provide the mnt string */
-        uint8_t ret_state = 0;
+      if (mnt_cache_state != MNT_CACHE_READY) {
+        uint8_t ret_state = mnt_cache_state;
         write_loop(module_fd, &ret_state, sizeof(ret_state));
+
+        if (mnt_cache_state == MNT_CACHE_SKIP) continue;
+
+        /* INFO: First process to hide it, so ask to provide the mnt string.
+                  A SKIP result stores the refusal so later forks do not capture again. */
+        uint8_t result;
+        if (read_loop(module_fd, &result, sizeof(result)) != sizeof(result)) {
+          PLOGE("Read mnt cache result");
+
+          goto cleanup;
+        }
+
+        if (result == MNT_CACHE_SKIP) {
+          mnt_cache_state = MNT_CACHE_SKIP;
+
+          continue;
+        }
+
+        if (result != MNT_CACHE_READY) continue;
 
         if (read_loop(module_fd, &mnt_line, sizeof(mnt_line)) == -1) {
           PLOGE("Read mnt_line");
@@ -689,11 +715,13 @@ void zygisk_companion_entry(int module_fd) {
           goto cleanup;
         }
 
+        mnt_cache_state = MNT_CACHE_READY;
+
         continue;
       }
 
       /* INFO: Already have the mnt string, just send it */
-      uint8_t ret_state = 1;
+      uint8_t ret_state = MNT_CACHE_READY;
       write_loop(module_fd, &ret_state, sizeof(ret_state));
 
       /* INFO: The address of the mnt line */

@@ -67,7 +67,14 @@ enum daemon_operations {
   DAEMON_CHECK_POINT,
   DAEMON_GET_MNT_STRING,
   DAEMON_GET_RVX_MOUNTS,
-  DAEMON_GOODBYE
+  DAEMON_GOODBYE,
+  DAEMON_CLEAR_MNT_STRING
+};
+
+enum mnt_cache_reply {
+  MNT_CACHE_EMPTY = 0,
+  MNT_CACHE_READY = 1,
+  MNT_CACHE_SKIP = 2
 };
 
 enum module_status {
