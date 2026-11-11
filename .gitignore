@@ -2,8 +2,8 @@
 
 !.github/
 !.github/**
-!build/
-!build/**
+!module/
+!module/**
 !src/
 !src/**
 !.gitignore

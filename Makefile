@@ -1,16 +1,45 @@
-BUILD_PATH = build/src
-ZYGISK_PATH = $(BUILD_PATH)/zygisk
-CMD_PATH = $(BUILD_PATH)/cmd
-
+ROOT_DIR ?= .
+BUILD_TYPE ?= debug
+API_LEVEL ?= 34
 ARCHS ?= arm64-v8a armeabi-v7a x86 x64
 ARCH ?= arm64-v8a
 
-API_LEVEL ?= 34
+VER_NAME ?= v0.0.10
+VER_CODE ?= $(shell git -C "$(ROOT_DIR)" rev-list HEAD --count 2>/dev/null || echo 1)
+COMMIT_HASH ?= $(shell git -C "$(ROOT_DIR)" rev-parse --verify --short HEAD 2>/dev/null || echo unknown)
+
+NDK_VERSION ?= 29.0.14206865
+ANDROID_HOME ?= $(HOME)/Android/Sdk
+NDK_PATH ?= $(ANDROID_HOME)/ndk/$(NDK_VERSION)
+TOOLCHAIN ?= $(NDK_PATH)/toolchains/llvm/prebuilt/linux-x86_64
+
+ifeq ($(TERMUX_VERSION),)
+	CC = $(TOOLCHAIN)/bin/clang
+	STRIP = $(TOOLCHAIN)/bin/llvm-strip
+	SYSROOT ?= $(TOOLCHAIN)/sysroot
+	ADB_SHELL := adb shell 
+	ADB_PUSH := adb push
+else
+	CC = clang
+	STRIP = llvm-strip
+	ADB_PUSH := su -c cp -r
+endif
+
+BUILD_DIR = $(ROOT_DIR)/build
+TYPE_DIR = $(BUILD_DIR)/$(BUILD_TYPE)
+ZYGISK_PATH = $(TYPE_DIR)/zygisk
+CMD_PATH = $(TYPE_DIR)/cmd
 
 TARGET_arm64-v8a = aarch64-linux-android$(API_LEVEL)
 TARGET_armeabi-v7a = armv7a-linux-androideabi$(API_LEVEL)
 TARGET_x86 = i686-linux-android$(API_LEVEL)
 TARGET_x64 = x86_64-linux-android$(API_LEVEL)
+
+ifneq ($(SYSROOT),)
+	CC_ARCH = $(CC) --target=$(TARGET_$(ARCH)) --sysroot=$(SYSROOT)
+else
+	CC_ARCH = $(CC) --target=$(TARGET_$(ARCH))
+endif
 
 CFILES_ZYGISK = src/lib/elf_util.c src/lib/hiding.c src/lib/main.c src/lib/rz_daemon.c src/lib/utils.c
 CFILES_CMD = src/cmd/main.c src/cmd/utils.c src/lib/utils.c src/system_properties/src/*.c
@@ -21,84 +50,68 @@ CFLAGS = -llog -fvisibility=hidden -fvisibility-inlines-hidden -Wpedantic     \
          -Wno-gnu-zero-variadic-macro-arguments                               \
 		 -Wno-gnu-statement-expression-from-macro-expansion
 
-
-ifeq ($(TERMUX_VERSION),)
-	ADB_PUSH := adb push
-	ADB_SHELL := adb shell 
-
-	ifeq ($(IS_GITHUB_ACTION),true)
-		CC = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	else
-		CC = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
-		STRIP = $(ANDROID_HOME)/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-	endif
-else
-	ADB_PUSH := su -c cp -r
-	CC ?= clang
-	STRIP ?= llvm-strip
-endif
-
 ifeq ($(BUILD_TYPE), debug)
 	CFLAGS += -DDEBUG -O0 -g
 else
 	CFLAGS += -flto=full -s -Wl,--strip-all -Wl,--exclude-libs,ALL -Wl,--as-needed
 endif
 
-
-CLANG ?= $(CC)
+VERSION ?= $(VER_CODE)-$(COMMIT_HASH)-$(BUILD_TYPE)
+MODULE_ZIP ?= TreatWheel-$(VER_NAME)-$(VERSION).zip
+ZIP_OUT ?= $(BUILD_DIR)/out/$(MODULE_ZIP)
 
 .PHONY: all build release debug installModule installModuleAndReboot updateWebUI analyze analyze_arch
-
-all: debug
 
 debug:
 	$(MAKE) -s build BUILD_TYPE=debug
 release:
 	$(MAKE) -s build BUILD_TYPE=release
 
+all: debug release
+
 build:
 	@echo Creating required directories...
 	@mkdir -p $(ZYGISK_PATH) > /dev/null
 	@mkdir -p $(CMD_PATH) > /dev/null
+	@mkdir -p $(BUILD_DIR)/out > /dev/null
+	@cp -r module/src/* $(TYPE_DIR)
 
 	@for arch in $(ARCHS); do  \
 	  echo "Compiling for $$arch...";  \
 	  $(MAKE) -s compile_arch ARCH=$$arch;  \
 	done
 
-	@echo Copying module.prop file...
-	@cp $(BUILD_PATH)/../module.prop $(BUILD_PATH)/module.prop
+	@echo Preparing module.prop...
+	@sed -e 's/$${versionName}/$(VER_NAME) ($(VERSION))/g' \
+	    -e 's/$${versionCode}/$(VER_CODE)/g'                                            \
+	    module/src/module.prop > $(TYPE_DIR)/module.prop
 
 	@echo Creating zip...
 
-	@rm -rf $(BUILD_PATH)/webroot
-	@cp -r src/webroot $(BUILD_PATH)
+	@rm -rf $(TYPE_DIR)/webroot
+	@cp -r src/webroot $(TYPE_DIR)
 
 	@if [ "$(IS_GITHUB_ACTION)" = "true" ]; then \
 		echo Detected CI environment. Modifying web UI for CI build...; \
-		sed -i 's/ display: none;//g' $(BUILD_PATH)/webroot/js/pages/home/index.html; \
+		sed -i 's/ display: none;//g' $(TYPE_DIR)/webroot/js/pages/home/index.html; \
 	fi
 
-	@rm -rf ../build/TreatWheel.zip
-	@(cd $(BUILD_PATH) && zip -r ../TreatWheel.zip .) > /dev/null
+	@rm -rf $(ZIP_OUT)
+	@(cd $(TYPE_DIR) && zip -r ../out/$(MODULE_ZIP) .) > /dev/null
 
 compile_arch:
 	@mkdir -p $(ZYGISK_PATH)/$(ARCH) > /dev/null
 	@mkdir -p $(CMD_PATH)/$(ARCH) > /dev/null
 
-	@$(CLANG) --target=$(TARGET_$(ARCH)) -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/$(ARCH)/libexample.so
-	@$(CLANG) --target=$(TARGET_$(ARCH)) -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/$(ARCH)/treat-wheel
+	@$(CC_ARCH) -fPIC -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -nostartfiles -shared -o $(ZYGISK_PATH)/$(ARCH)/libexample.so
+	@$(CC_ARCH) -fPIC -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -o $(CMD_PATH)/$(ARCH)/treat-wheel
 
 	@$(STRIP) --strip-all $(ZYGISK_PATH)/$(ARCH)/libexample.so
 	@$(STRIP) --strip-all $(CMD_PATH)/$(ARCH)/treat-wheel
 
 clean:
 	@echo Cleaning build artifacts...
-	@rm -rf $(BUILD_PATH)/cmd
-	@rm -rf $(BUILD_PATH)/zygisk
-	@rm -rf $(BUILD_PATH)/webroot
-	@rm -rf ../build/TreatWheel.zip > /dev/null
+	@rm -rf $(BUILD_DIR)
 
 analyze:
 	@for arch in $(ARCHS); do              \
@@ -107,15 +120,15 @@ analyze:
 	done
 
 analyze_arch:
-	@$(CLANG) --target=$(TARGET_$(ARCH)) -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -Wno-unused-command-line-argument --analyze -Xanalyzer -analyzer-output=text
-	@$(CLANG) --target=$(TARGET_$(ARCH)) -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -Wno-unused-command-line-argument --analyze -Xanalyzer -analyzer-output=text
+	@$(CC_ARCH) -DIS_ZYGISK_LIB $(CFILES_ZYGISK) $(CFLAGS) -Wno-unused-command-line-argument --analyze -Xanalyzer -analyzer-output=text
+	@$(CC_ARCH) -DIS_CMD $(CFILES_CMD) $(CFLAGS) -Isrc/system_properties/include -DUTILS_NO_SSL -Wno-unused-command-line-argument --analyze -Xanalyzer -analyzer-output=text
 
 installModule: build
-	$(ADB_PUSH) build/TreatWheel.zip /data/local/tmp
-	@$(ADB_SHELL)su -M -c "magisk --install-module /data/local/tmp/TreatWheel.zip 2&>/dev/null"|| \
-	$(ADB_SHELL)su -c "ksud module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"||        \
-	$(ADB_SHELL)su -c "apd module install /data/local/tmp/TreatWheel.zip 2&>/dev/null"           \
-	&& $(ADB_SHELL)su -c rm /data/local/tmp/TreatWheel.zip                                       \
+	$(ADB_PUSH) $(ZIP_OUT) /data/local/tmp
+	@$(ADB_SHELL)su -M -c "magisk --install-module /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"|| \
+	$(ADB_SHELL)su -c "ksud module install /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"||        \
+	$(ADB_SHELL)su -c "apd module install /data/local/tmp/$(MODULE_ZIP) 2&>/dev/null"           \
+	&& $(ADB_SHELL)su -c rm /data/local/tmp/$(MODULE_ZIP)                                       \
 	|| echo "[X] Could not find valid CLI to install the module"
 
 installModuleAndReboot: installModule
