@@ -53,234 +53,124 @@ bool str_equal(const char *str1, const char *str2) {
   return is_equal;
 }
 
-
 struct maps *parse_maps(const char *filename) {
-  int sockets[2];
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == -1) {
-    PLOGE("Create socketpair");
+  int fd = openat(AT_FDCWD, filename, O_RDONLY | O_CLOEXEC);
+  if (fd == -1) {
+    PLOGE("Open %s", filename);
 
     return NULL;
   }
 
-  int write_fd = sockets[0];
-  int read_fd = sockets[1];
+  /* INFO: malloc can cause detections as it uses scudo VMAs on Android to do its work. That can
+             lead to additional detections. Hence, to avoid touching more system resources, we
+             use mmap directly. */
+  size_t capacity = (size_t)sysconf(_SC_PAGESIZE);
+  char *region = (char *)mmap(NULL, capacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (region == MAP_FAILED) {
+    PLOGE("Map %s", filename);
 
-  int new_pid = syscall(SYS_clone, SIGCHLD, 0);
-  if (new_pid == -1) {
-    PLOGE("fork");
-
-    close(write_fd);
-    close(read_fd);
-
-    return NULL;
-  }
-
-  if (new_pid == 0) {
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-      PLOGE("Open maps");
-
-      return NULL;
-    }
-
-    char line[4096 * 2];
-    while (fgets(line, sizeof(line), fp) != NULL) {
-      line[strlen(line) - 1] = '\0';
-
-      uintptr_t addr_start;
-      uintptr_t addr_end;
-      uintptr_t addr_offset;
-      ino_t inode;
-      unsigned int dev_major;
-      unsigned int dev_minor;
-      char permissions[5] = "";
-      int path_offset;
-
-      sscanf(line,
-             "%" PRIxPTR "-%" PRIxPTR " %4s %" PRIxPTR " %x:%x %lu %n%*s",
-             &addr_start, &addr_end, permissions, &addr_offset, &dev_major, &dev_minor,
-             &inode, &path_offset);
-
-      while (line[path_offset] == ' ')
-        path_offset++;
-
-      #define WRITE_AND_ASSURE(var)                                   \
-        if (write_loop(write_fd, &var, sizeof(var)) != sizeof(var)) { \
-          PLOGE("Write " #var);                                       \
-                                                                      \
-          fclose(fp);                                                 \
-                                                                      \
-          close(write_fd);                                            \
-          close(read_fd);                                             \
-                                                                      \
-          return NULL;                                                \
-        }
-
-      uint8_t has_more_maps = 1;
-      WRITE_AND_ASSURE(has_more_maps);
-
-      WRITE_AND_ASSURE(addr_start);
-      WRITE_AND_ASSURE(addr_end);
-      WRITE_AND_ASSURE(addr_offset);
-      WRITE_AND_ASSURE(inode);
-
-      dev_t device = makedev(dev_major, dev_minor);
-      WRITE_AND_ASSURE(device);
-
-      uint8_t perms = 0;
-      if (permissions[0] == 'r') perms |= PROT_READ;
-      if (permissions[1] == 'w') perms |= PROT_WRITE;
-      if (permissions[2] == 'x') perms |= PROT_EXEC;
-
-      WRITE_AND_ASSURE(perms);
-
-      uint8_t is_private = permissions[3] == 'p';
-      WRITE_AND_ASSURE(is_private);
-
-      size_t path_len = strlen(line + path_offset);
-      WRITE_AND_ASSURE(path_len);
-      if (path_len != 0) {
-        if (write_loop(write_fd, line + path_offset, path_len) != (ssize_t)path_len) {
-          PLOGE("Write path");
-
-          fclose(fp);
-
-          close(write_fd);
-          close(read_fd);
-
-          return NULL;
-        }
-      }
-
-      #undef WRITE_AND_ASSURE
-    }
-
-    uint8_t has_more_maps = 0;
-    write_loop(write_fd, &has_more_maps, sizeof(uint8_t));
-
-    fclose(fp);
-
-    _exit(0);
-  }
-
-  struct maps *maps = (struct maps *)malloc(sizeof(struct maps));
-  if (!maps) {
-    PLOGE("Allocate memory for maps");
-
-    close(write_fd);
-    close(read_fd);
-
-    waitpid(new_pid, NULL, 0);
+    close(fd);
 
     return NULL;
   }
 
-  maps->maps = NULL;
+  size_t used = 0;
+  size_t lines = 0;
 
-  size_t i = 0;
-  while (1) {
-    #define READ_AND_ASSURE(field)                                                                                \
-      if (read_loop(read_fd, &maps->maps[i].field, sizeof(maps->maps[i].field)) != sizeof(maps->maps[i].field)) { \
-        PLOGE("Read " #field);                                                                                    \
-                                                                                                                  \
-        goto maps_read_fail;                                                                                      \
+  while (true) {
+    size_t needed = sizeof(struct maps) + (lines + 1) * sizeof(struct map) + used + 1;
+    if (needed > capacity) {
+      char *grown = (char *)mremap(region, capacity, needed, MREMAP_MAYMOVE);
+      if (grown == MAP_FAILED) {
+        PLOGE("Grow %s", filename);
+
+        goto cleanup;
       }
 
-    uint8_t has_more_maps = 0;
-    if (read_loop(read_fd, &has_more_maps, sizeof(has_more_maps)) != sizeof(has_more_maps)) {
-      PLOGE("Read has_more_maps");
-
-      goto maps_read_fail;
+      region = grown;
+      capacity = needed;
     }
 
-    if (!has_more_maps) break;
+    ssize_t length = read_loop(fd, region + sizeof(struct maps) + used, capacity - sizeof(struct maps) - used - 1);
+    if (length == -1) {
+      PLOGE("Read %s", filename);
 
-    maps->maps = (struct map *)realloc(maps->maps, (i + 1) * sizeof(struct map));
-    if (!maps->maps) {
-      PLOGE("Realloc maps");
-
-      goto maps_read_fail;
+      goto cleanup;
     }
 
-    READ_AND_ASSURE(addr_start);
-    READ_AND_ASSURE(addr_end);
-    READ_AND_ASSURE(addr_offset);
-    READ_AND_ASSURE(inode);
-    READ_AND_ASSURE(dev);
-    READ_AND_ASSURE(perms);
-    READ_AND_ASSURE(is_private);
+    if (length == 0) break;
 
-    size_t path_len = 0;
-    if (read_loop(read_fd, &path_len, sizeof(path_len)) != sizeof(path_len)) {
-      PLOGE("Read path_len");
+    for (ssize_t i = 0; i < length; i++) {
+      char *character = region + sizeof(struct maps) + used + i;
+      if (*character != '\n') continue;
 
-      goto maps_read_fail;
+      *character = '\0';
+      lines++;
     }
 
-    if (path_len > 0) {
-      maps->maps[i].path = (char *)malloc(path_len + 1);
-      if (!maps->maps[i].path) {
-        PLOGE("Allocate memory for path");
-
-        goto maps_read_fail;
-      }
-
-      if (read_loop(read_fd, maps->maps[i].path, path_len) != (ssize_t)path_len) {
-        PLOGE("Read path");
-
-        goto maps_read_fail;
-      }
-
-      maps->maps[i].path[path_len] = '\0';
-    } else {
-      maps->maps[i].path = NULL;
-    }
-
-    #undef READ_AND_ASSURE
-
-    i++;
-
-    continue;
-
-    maps_read_fail:
-      close(write_fd);
-      close(read_fd);
-
-      maps->size = i;
-      free_maps(maps);
-
-      waitpid(new_pid, NULL, 0);
-
-      return NULL;
+    used += (size_t)length;
   }
 
-  maps->size = i;
+  close(fd);
 
-  waitpid(new_pid, NULL, 0);
+  if (used == 0) {
+    LOGE("Empty %s", filename);
 
-  close(write_fd);
-  close(read_fd);
+    goto cleanup;
+  }
+
+  /* INFO: The text was read right after the header, so it moves up after the
+             entries, leaving the layout as header, entries and then the text. */
+  char *text = region + sizeof(struct maps) + (lines + 1) * sizeof(struct map);
+  memmove(text, region + sizeof(struct maps), used);
+  text[used] = '\0';
+
+  struct maps *maps = (struct maps *)region;
+  maps->maps = (struct map *)(region + sizeof(struct maps));
+  maps->size = 0;
+  maps->region_size = capacity;
+
+  for (char *line = text; line < text + used; line += strlen(line) + 1) {
+    uintptr_t addr_start, addr_end, addr_offset;
+    unsigned int dev_major, dev_minor;
+    ino_t inode;
+    char permissions[5] = "";
+    int path_offset = 0;
+
+    if (sscanf(line,
+               "%" PRIxPTR "-%" PRIxPTR " %4s %" PRIxPTR " %x:%x %lu %n%*s",
+               &addr_start, &addr_end, permissions, &addr_offset, &dev_major, &dev_minor,
+               &inode, &path_offset) < 7) {
+      LOGE("Failed to parse %s line: %s", filename, line);
+
+      continue;
+    }
+
+    maps->maps[maps->size++] = (struct map) {
+      .addr_start = addr_start,
+      .addr_end = addr_end,
+      .addr_offset = addr_offset,
+      .inode = inode,
+      .dev = makedev(dev_major, dev_minor),
+      .perms = (permissions[0] == 'r' ? PROT_READ : 0) | (permissions[1] == 'w' ? PROT_WRITE : 0) | (permissions[2] == 'x' ? PROT_EXEC : 0),
+      .is_private = permissions[3] == 'p',
+      .path = line[path_offset] != '\0' ? line + path_offset : NULL,
+    };
+  }
 
   return maps;
+
+  cleanup:
+    munmap(region, capacity);
+    close(fd);
+
+    return NULL;
 }
 
 void free_maps(struct maps *maps) {
-  if (maps->maps == NULL) {
-    free(maps);
-
-    return;
-  }
-
-  for (size_t i = 0; i < maps->size; i++) {
-    if (maps->maps[i].path) free((void *)maps->maps[i].path);
-  }
-
-  free(maps->maps);
-  free(maps);
+  munmap(maps, maps->region_size);
 }
 
-/* INFO: This function performs mountinfo parsing securely on another process to
-           avoid being detected by touching /proc. */
 struct mountsinfo *parse_mountinfo(const char *filename) {
   int sockets[2];
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == -1) {

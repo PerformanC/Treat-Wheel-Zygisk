@@ -37,6 +37,7 @@ struct map {
 struct maps {
   struct map *maps;
   size_t size;
+  size_t region_size;
 };
 
 struct mountinfo {
