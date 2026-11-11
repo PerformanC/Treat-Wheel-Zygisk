@@ -729,70 +729,38 @@ static void *_page_end(uintptr_t addr) {
 }
 
 struct tw_mem_info tw_get_mem_info(void) {
-  #ifdef __aarch64__
-    int fd = open("/data/adb/modules/treat_wheel/zygisk/arm64-v8a.so", O_RDONLY);
-  #elif defined(__arm__)
-    int fd = open("/data/adb/modules/treat_wheel/zygisk/armeabi-v7a.so", O_RDONLY);
-  #elif defined(__x86_64__)
-    int fd = open("/data/adb/modules/treat_wheel/zygisk/x86_64.so", O_RDONLY);
-  #elif defined(__i386__)
-    int fd = open("/data/adb/modules/treat_wheel/zygisk/x86.so", O_RDONLY);
-  #else
-    #error "Unsupported architecture"
-  #endif
+  /* INFO: Represents the address to the in-memory ELF header */
+  extern const ElfW(Ehdr) __ehdr_start;
 
-  ElfW(Ehdr) ehdr;
-  if (pread(fd, &ehdr, sizeof(ehdr), 0) != sizeof(ehdr)) {
-    PLOGE("pread ehdr");
+  const ElfW(Ehdr) *ehdr = &__ehdr_start;
 
-    close(fd);
+  if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0 || ehdr->e_phentsize != sizeof(ElfW(Phdr)) || ehdr->e_phnum == 0) {
+    LOGE("Invalid in-memory ELF header");
 
     return (struct tw_mem_info) { 0 };
   }
 
-  ElfW(Phdr) *phdrs = malloc(ehdr.e_phentsize * ehdr.e_phnum);
-  if (pread(fd, phdrs, ehdr.e_phentsize * ehdr.e_phnum, ehdr.e_phoff) != ehdr.e_phentsize * ehdr.e_phnum) {
-    PLOGE("pread phdrs");
-
-    free(phdrs);
-
-    close(fd);
-
-    return (struct tw_mem_info) { 0 };
-  }
+  const ElfW(Phdr) *phdrs = (const ElfW(Phdr) *)((const char *)ehdr + ehdr->e_phoff);
 
   ElfW(Addr) lo = UINTPTR_MAX, hi = 0;
-  for (size_t i = 0; i < ehdr.e_phnum; ++i) {
+  for (size_t i = 0; i < ehdr->e_phnum; ++i) {
     if (phdrs[i].p_type != PT_LOAD) continue;
     if (phdrs[i].p_vaddr < lo) lo = phdrs[i].p_vaddr;
     if (phdrs[i].p_vaddr + phdrs[i].p_memsz > hi) hi = phdrs[i].p_vaddr + phdrs[i].p_memsz;
   }
 
-  free(phdrs);
-
-  close(fd);
-
-  struct maps *maps = parse_maps("/proc/self/maps");
-  if (!maps) {
-    LOGE("Failed to parse maps");
+  if (lo == UINTPTR_MAX || hi <= lo) {
+    LOGE("Failed to find a loaded segment in the in-memory ELF header");
 
     return (struct tw_mem_info) { 0 };
   }
 
-  void *tw_mem_start = NULL;
-  for (size_t i = 0; i < maps->size; i++) {
-    struct map *map = &maps->maps[i];
-    if (!map->path || !strstr(map->path, "treat_wheel/zygisk/")) continue;
-
-    tw_mem_start = (void *)map->addr_start;
-
-    break;
-  }
-
-  free_maps(maps);
+  uintptr_t base = (uintptr_t)ehdr;
+  uintptr_t start = (uintptr_t)_page_start(base + lo);
+  uintptr_t end = (uintptr_t)_page_end(base + hi);
 
   return (struct tw_mem_info) {
-    .start = (uintptr_t)tw_mem_start,
-    .size = (size_t)((uintptr_t)_page_end(hi) - (uintptr_t)_page_start(lo))
+    .start = start,
+    .size = (size_t)(end - start)
   };
 }
