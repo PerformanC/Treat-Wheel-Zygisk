@@ -62,85 +62,83 @@ int do_gsi_hiding(struct api_table *api_table, JNIEnv *tw_env) {
   return 1;
 }
 
-int do_zygote_mountinfo_leak_hiding(struct api_table *api_table, JNIEnv *tw_env) {
-  (void) api_table; (void) tw_env;
+#define BIONIC_LINE_BUFFER_SIZE 1024
 
-  LOGI("ZMLH: Zygote mountinfo leak hiding is enabled, hiding traces.");
+/* INFO: The companion caches a virtual address from whichever zygote captured it.
+          ctl.restart surfaceflinger restarts zygote and that address is no longer mapped.
+          mincore fails with ENOMEM for any page in the range that is not mapped. */
+static bool zmlh_range_is_mapped(const void *addr, size_t length) {
+  if (addr == NULL || length == 0) return false;
 
-  enum daemon_operations op = DAEMON_GET_MNT_STRING;
-  if (write(cfd, &op, sizeof(op)) == -1) {
-    PLOGE("ZMLH: Write operation");
+  long page_size = sysconf(_SC_PAGESIZE);
+  if (page_size <= 0) return false;
 
-    return 0;
+  uintptr_t start = (uintptr_t)addr;
+  uintptr_t end = start + length;
+  uintptr_t page_start = start & ~((uintptr_t)page_size - 1);
+  size_t span = (size_t)(end - page_start);
+  size_t page_span = (span + (size_t)page_size - 1) & ~((size_t)page_size - 1);
+  size_t page_count = page_span / (size_t)page_size;
+
+  unsigned char vec[8];
+  if (page_count == 0 || page_count > sizeof(vec)) return false;
+
+  if (mincore((void *)page_start, page_span, vec) == -1) return false;
+
+  return true;
+}
+
+static bool zmlh_capture_mntent(char *mntent_string, char **mntent_line) {
+  int pipes[2];
+  if (pipe(pipes) == -1) {
+    PLOGE("ZMLH: Pipe");
+
+    return false;
   }
 
-  uint8_t has_mnt_string;
-  if (read(cfd, &has_mnt_string, sizeof(has_mnt_string)) == -1) {
-    PLOGE("ZMLH: Read has_mnt_string");
+  int pid = syscall(SYS_clone, SIGCHLD, 0);
+  if (pid == -1) {
+    PLOGE("ZMLH: Clone");
 
-    return 0;
+    close(pipes[0]);
+    close(pipes[1]);
+
+    return false;
   }
 
-  #define BIONIC_LINE_BUFFER_SIZE 1024
-  static char mntent_string[BIONIC_LINE_BUFFER_SIZE];
-  char *mntent_line = NULL;
+  uintptr_t value = 0;
+  if (pid == 0) {
+    close(pipes[0]);
 
-  if (has_mnt_string == 0) {
-    int pipes[2];
-    if (pipe(pipes) == -1) {
-      PLOGE("ZMLH: Pipe");
+    FILE *fp = setmntent("/proc/self/mounts", "r");
+    if (!fp) {
+      PLOGE("ZMLH: setmntent mounts");
 
-      return 0;
-    }
-
-    int pid = syscall(SYS_clone, SIGCHLD, 0);
-    if (pid == -1) {
-      PLOGE("ZMLH: Clone");
-
-      close(pipes[0]);
       close(pipes[1]);
 
-      return 0;
+      _exit(0);
     }
 
-    uintptr_t value = 0;
-    if (pid == 0) {
-      close(pipes[0]);
+    while (true) {
+      struct mntent *entry = getmntent(fp);
+      /* INFO: mnt_fsname is &line[0] so value is the basse of the 1024-char line buffer */
+      if (entry) value = (uintptr_t)entry->mnt_fsname;
+      else break;
+    }
+    endmntent(fp);
 
-      FILE *fp = setmntent("/proc/self/mounts", "r");
-      if (!fp) {
-        PLOGE("ZMLH: setmntent mounts");
+    /* INFO: Copy the entire 1024-char string buffer (NULs included), not strlen. */
 
-        close(pipes[1]);
+    if (value == 0 || write(pipes[1], (void *)value, BIONIC_LINE_BUFFER_SIZE) == -1) {
+      PLOGE("ZMLH: Write pipe");
 
-        _exit(0);
-      }
+      close(pipes[1]);
 
-      while (true) {
-        struct mntent *entry = getmntent(fp);
-        /* INFO: mnt_fsname is &line[0] so value is the basse of the 1024-char line buffer */
-        if (entry) value = (uintptr_t)entry->mnt_fsname;
-        else break;
-      }
-      endmntent(fp);
+      _exit(0);
+    }
 
-      /* INFO: Copy the entire 1024-char string buffer (NULs included), not strlen. */
-
-      if (write(pipes[1], (void *)value, BIONIC_LINE_BUFFER_SIZE) == -1) {
-        PLOGE("ZMLH: Write pipe");
-
-        close(pipes[1]);
-
-        _exit(0);
-      }
-
-      if (write(pipes[1], &value, sizeof(value)) == -1) {
-        PLOGE("ZMLH: Write pipe value");
-
-        close(pipes[1]);
-
-        _exit(0);
-      }
+    if (write(pipes[1], &value, sizeof(value)) == -1) {
+      PLOGE("ZMLH: Write pipe value");
 
       close(pipes[1]);
 
@@ -149,60 +147,168 @@ int do_zygote_mountinfo_leak_hiding(struct api_table *api_table, JNIEnv *tw_env)
 
     close(pipes[1]);
 
-    if (read_loop(pipes[0], mntent_string, sizeof(mntent_string)) != sizeof(mntent_string)) {
-      PLOGE("ZMLH: Read pipe");
+    _exit(0);
+  }
 
-      close(pipes[0]);
+  close(pipes[1]);
 
-      return 0;
-    }
-
-    if (read_loop(pipes[0], &mntent_line, sizeof(mntent_line)) != sizeof(mntent_line)) {
-      PLOGE("ZMLH: Read pipe mntent line");
-
-      close(pipes[0]);
-
-      return 0;
-    }
-
-    LOGD("ZMLH: Got mntent string: %.*s (%zu)", (int)sizeof(mntent_string), mntent_string, strlen(mntent_string));
+  if (read_loop(pipes[0], mntent_string, BIONIC_LINE_BUFFER_SIZE) != BIONIC_LINE_BUFFER_SIZE) {
+    PLOGE("ZMLH: Read pipe");
 
     close(pipes[0]);
-
     waitpid(pid, NULL, 0);
 
-    if (write_loop(cfd, &mntent_line, sizeof(mntent_line)) == -1) {
-      PLOGE("ZMLH: Write mntent_line");
+    return false;
+  }
 
-      return 0;
-    }
+  if (read_loop(pipes[0], mntent_line, sizeof(*mntent_line)) != sizeof(*mntent_line)) {
+    PLOGE("ZMLH: Read pipe mntent line");
 
-    if (write_loop(cfd, mntent_string, sizeof(mntent_string)) == -1) {
-      PLOGE("ZMLH: Write mntent_string");
+    close(pipes[0]);
+    waitpid(pid, NULL, 0);
 
-      return 0;
-    }
-  } else {
-    if (read_loop(cfd, &mntent_line, sizeof(mntent_line)) == -1) {
-      PLOGE("ZMLH: Read mntent_line");
+    return false;
+  }
 
-      return 0;
-    }
+  LOGD("ZMLH: Got mntent string: %.*s (%zu)", BIONIC_LINE_BUFFER_SIZE, mntent_string, strlen(mntent_string));
 
-    if (read_loop(cfd, mntent_string, sizeof(mntent_string)) == -1) {
-      PLOGE("ZMLH: Read mntent_string");
+  close(pipes[0]);
 
-      return 0;
+  waitpid(pid, NULL, 0);
+
+  return true;
+}
+
+/* INFO: Server is blocked in the EMPTY handshake until this is sent. */
+static bool zmlh_publish_mntent(uint8_t result, char *mntent_line, char *mntent_string) {
+  if (write_loop(cfd, &result, sizeof(result)) == -1) {
+    PLOGE("ZMLH: Write mnt cache result");
+
+    return false;
+  }
+
+  if (result != MNT_CACHE_READY) return true;
+
+  if (write_loop(cfd, &mntent_line, sizeof(mntent_line)) == -1) {
+    PLOGE("ZMLH: Write mntent_line");
+
+    return false;
+  }
+
+  if (write_loop(cfd, mntent_string, BIONIC_LINE_BUFFER_SIZE) == -1) {
+    PLOGE("ZMLH: Write mntent_string");
+
+    return false;
+  }
+
+  return true;
+}
+
+static bool zmlh_read_cached_mntent(char *mntent_string, char **mntent_line) {
+  if (read_loop(cfd, mntent_line, sizeof(*mntent_line)) == -1) {
+    PLOGE("ZMLH: Read mntent_line");
+
+    return false;
+  }
+
+  if (read_loop(cfd, mntent_string, BIONIC_LINE_BUFFER_SIZE) == -1) {
+    PLOGE("ZMLH: Read mntent_string");
+
+    return false;
+  }
+
+  return true;
+}
+
+static bool zmlh_query_mnt_cache(uint8_t *cache_state) {
+  enum daemon_operations op = DAEMON_GET_MNT_STRING;
+  if (write_loop(cfd, &op, sizeof(op)) == -1) {
+    PLOGE("ZMLH: Write operation");
+
+    return false;
+  }
+
+  if (read_loop(cfd, cache_state, sizeof(*cache_state)) != sizeof(*cache_state)) {
+    PLOGE("ZMLH: Read mnt cache state");
+
+    return false;
+  }
+
+  return true;
+}
+
+int do_zygote_mountinfo_leak_hiding(struct api_table *api_table, JNIEnv *tw_env) {
+  (void) api_table; (void) tw_env;
+
+  LOGI("ZMLH: Zygote mountinfo leak hiding is enabled, hiding traces.");
+
+  uint8_t cache_state;
+  if (!zmlh_query_mnt_cache(&cache_state)) return 0;
+
+  static char mntent_string[BIONIC_LINE_BUFFER_SIZE];
+  char *mntent_line = NULL;
+
+  if (cache_state == MNT_CACHE_SKIP) {
+    LOGI("ZMLH: Mount line overwrite was refused for this companion, skipping.");
+
+    return 1;
+  }
+
+  if (cache_state == MNT_CACHE_READY) {
+    if (!zmlh_read_cached_mntent(mntent_string, &mntent_line)) return 0;
+
+    if (!zmlh_range_is_mapped(mntent_line, BIONIC_LINE_BUFFER_SIZE)) {
+      /* INFO: Stale address from the zygote that died with surfaceflinger's restart. */
+      LOGW("ZMLH: Cached mntent line %p is not mapped, capturing again.", (void *)mntent_line);
+
+      enum daemon_operations op = DAEMON_CLEAR_MNT_STRING;
+      if (write_loop(cfd, &op, sizeof(op)) == -1) {
+        PLOGE("ZMLH: Clear cached mntent");
+
+        return 0;
+      }
+
+      if (!zmlh_query_mnt_cache(&cache_state)) return 0;
+
+      if (cache_state == MNT_CACHE_SKIP) return 1;
+
+      if (cache_state == MNT_CACHE_READY) {
+        if (!zmlh_read_cached_mntent(mntent_string, &mntent_line)) return 0;
+
+        if (!zmlh_range_is_mapped(mntent_line, BIONIC_LINE_BUFFER_SIZE)) {
+          LOGW("ZMLH: Replacement mntent line %p is not mapped, skipping.", (void *)mntent_line);
+
+          return 1;
+        }
+      }
     }
   }
 
-  if (!mntent_line) {
-    LOGE("ZMLH: Got NULL mntent_line, nothing to overwrite");
+  if (cache_state == MNT_CACHE_EMPTY) {
+    if (!zmlh_capture_mntent(mntent_string, &mntent_line)) {
+      if (!zmlh_publish_mntent(MNT_CACHE_EMPTY, NULL, NULL)) return 0;
+
+      return 0;
+    }
+
+    if (!zmlh_range_is_mapped(mntent_line, BIONIC_LINE_BUFFER_SIZE)) {
+      LOGW("ZMLH: Captured mntent line %p is not mapped, not overwriting it again.", (void *)mntent_line);
+
+      if (!zmlh_publish_mntent(MNT_CACHE_SKIP, NULL, NULL)) return 0;
+
+      return 1;
+    }
+
+    memcpy(mntent_line, mntent_string, BIONIC_LINE_BUFFER_SIZE);
+
+    if (!zmlh_publish_mntent(MNT_CACHE_READY, mntent_line, mntent_string)) return 0;
+  } else if (cache_state == MNT_CACHE_READY) {
+    memcpy(mntent_line, mntent_string, BIONIC_LINE_BUFFER_SIZE);
+  } else {
+    LOGE("ZMLH: Unexpected mnt cache state %u", cache_state);
 
     return 0;
   }
-
-  memcpy(mntent_line, mntent_string, BIONIC_LINE_BUFFER_SIZE);
 
   #ifdef DEBUG
     /* INFO: Transform NULL bytes to spaces for logging */
