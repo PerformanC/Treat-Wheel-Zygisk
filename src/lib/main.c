@@ -33,8 +33,8 @@ JNIEnv *tw_env;
 
 /* INFO: Global variables, the same for all processes */
 void *rz_base = NULL;
-dev_t rz_dev;
-ino_t rz_ino;
+dev_t rz_dev = 0;
+ino_t rz_ino = 0;
 
 struct tw_mem_info tw_info;
 
@@ -45,6 +45,7 @@ int cfd = -1;
 struct module_state g_state = { 0 };
 
 int my_munmap(void *addr, size_t length) {
+  LOGD("munmap called with addr=%p, length=%zu", addr, length);
   if (addr == rz_base) {
     LOGD("munmap: dladdr failed, found ReZygisk's library");
 
@@ -97,7 +98,7 @@ int my_munmap(void *addr, size_t length) {
 void preSpecialize(const char *process_name) {
   int tmp_fd = api_table->connectCompanion(api_table->impl);
   if (tmp_fd == -1)
-    return;
+    goto cleanup;
 
   /* INFO: To not create fd gaps, we move the companion fd to a reserved high fd. 300 is random.  */
   #define TW_CFD_RESERVED 300
@@ -122,7 +123,7 @@ void preSpecialize(const char *process_name) {
 
     g_state.is_ignoring = true;
 
-    return;
+    goto cleanup;
   }
 
   /* INFO: Ignore everyone and everything will make Treat Wheel completely disappear and behave like
@@ -131,7 +132,7 @@ void preSpecialize(const char *process_name) {
   if (g_state.is_ignoring) {
     LOGI("Module is set to be ignoring, requested to dlclose Treat Wheel.");
 
-    return;
+    goto cleanup;
   }
 
   /* INFO: Part of module status system */
@@ -150,27 +151,32 @@ void preSpecialize(const char *process_name) {
       ((flags & PROCESS_ON_DENYLIST) != PROCESS_ON_DENYLIST && !g_state.disable_denylist_logic_inversion)) {
     LOGI("Process is on denylist, cleaning extended traces.");
 
-    if (!g_state.disable_gsi_hiding && !do_gsi_hiding(api_table, tw_env)) return;
-    if (!g_state.disable_zygote_mountinfo_leak_fixing && !do_zygote_mountinfo_leak_hiding(api_table, tw_env)) return;
-    if (!g_state.disable_maps_hiding && !do_maps_hiding(api_table, tw_env)) return;
-    if (!g_state.disable_custom_font_loading && !do_custom_font_loading(api_table, tw_env)) return;
-    if (!g_state.disable_frida_traces_hiding && !do_frida_hiding(api_table, tw_env)) return;
+    if (!g_state.disable_gsi_hiding && !do_gsi_hiding(api_table, tw_env)) goto cleanup;
+    if (!g_state.disable_zygote_mountinfo_leak_fixing && !do_zygote_mountinfo_leak_hiding(api_table, tw_env)) goto cleanup;
+    if (!g_state.disable_maps_hiding && !do_maps_hiding(api_table, tw_env)) goto cleanup;
+    if (!g_state.disable_custom_font_loading && !do_custom_font_loading(api_table, tw_env)) goto cleanup;
+    if (!g_state.disable_frida_traces_hiding && !do_frida_hiding(api_table, tw_env)) goto cleanup;
   }
 
   if (!g_state.disable_denylist_logic_inversion) {
-    if (!do_denylist_logic_inversion(api_table, tw_env, flags)) return;
+    if (!do_denylist_logic_inversion(api_table, tw_env, flags)) goto cleanup;
   }
 
   if (((flags & PROCESS_ON_DENYLIST) == PROCESS_ON_DENYLIST && g_state.disable_denylist_logic_inversion) || 
       ((flags & PROCESS_ON_DENYLIST) != PROCESS_ON_DENYLIST && !g_state.disable_denylist_logic_inversion)) {
-    if (!g_state.disable_revanced_mounts_umount && !do_revanced_mounts_umount(api_table, tw_env, process_name)) return;
+    if (!g_state.disable_revanced_mounts_umount && !do_revanced_mounts_umount(api_table, tw_env, process_name)) goto cleanup;
   }
+
+  cleanup:
+    do_deinitialize();
 }
 
 void preAppSpecialize(void *mod_data, struct AppSpecializeArgs *args) {
   (void) mod_data; (void) args;
 
-  if (g_state.is_ignoring) {
+  if (rz_dev == 0 || rz_ino == 0 || tw_info.start == 0 || tw_info.size == 0) {
+    do_deinitialize();
+
     api_table->setOption(api_table->impl, DLCLOSE_MODULE_LIBRARY);
 
     return;
@@ -183,7 +189,11 @@ void preAppSpecialize(void *mod_data, struct AppSpecializeArgs *args) {
 
   LOGD("Now setting custom unmap hook to hide Treat Wheel's library");
   api_table->pltHookRegister(rz_dev, rz_ino, "munmap", (void *)my_munmap, NULL);
-  api_table->pltHookCommit();
+  if (!api_table->pltHookCommit()) {
+    LOGE("Failed to commit plt hook for munmap, requested to dlclose Treat Wheel.");
+
+    do_deinitialize();
+  }
 
   enum daemon_operations op = DAEMON_CHECK_POINT;
   write_loop(cfd, &op, sizeof(op));
@@ -198,7 +208,9 @@ void preAppSpecialize(void *mod_data, struct AppSpecializeArgs *args) {
 void preServerSpecialize(void *mod_data, struct ServerSpecializeArgs *args) {
   (void) mod_data; (void) args;
 
-  if (g_state.is_ignoring) {
+  if (rz_dev == 0 || rz_ino == 0 || tw_info.start == 0 || tw_info.size == 0) {
+    do_deinitialize();
+
     api_table->setOption(api_table->impl, DLCLOSE_MODULE_LIBRARY);
 
     return;
@@ -266,6 +278,15 @@ __attribute__((constructor)) static void tw_initialization(void) {
   }
 
   tw_info = tw_get_mem_info();
+  if (tw_info.start == 0 || tw_info.size == 0) {
+    LOGE("Failed to get Treat Wheel's memory region, requested to dlclose Treat Wheel.");
+
+    g_state.is_ignoring = true;
+
+    do_deinitialize();
+
+    return;
+  }
 
   LOGD("Treat Wheel memory region: start=%p, size=%zu", (void *)tw_info.start, tw_info.size);
 }
@@ -276,6 +297,7 @@ void zygisk_module_entry(struct api_table *table, JNIEnv *env) {
 
   static struct module_abi abi = {
     .api_version = 5,
+    .impl = "TW FTW",
     .preAppSpecialize = preAppSpecialize,
     .postAppSpecialize = postAppSpecialize,
     .preServerSpecialize = preServerSpecialize,
