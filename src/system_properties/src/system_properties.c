@@ -218,6 +218,9 @@ int system_properties_update(system_properties *self, prop_info *pi, const char 
     atomic_store_explicit(&pi->serial, (len << 24) | ((serial + 1) & 0xffffff), memory_order_relaxed);
   }
 
+  /* INFO: Clear the dirty backup area to not have any leftovers */
+  memset(prop_area_dirty_backup_area(pa), 0, PROP_VALUE_MAX);
+
   __futex_wake(&pi->serial, INT32_MAX);
 
   bump_serial(self->ctx);

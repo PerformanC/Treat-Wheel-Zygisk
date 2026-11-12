@@ -539,6 +539,9 @@ static void fix_node(const live_obj *o, size_t cnt, prop_bt *n) {
 
 bool prop_area_compact(prop_area *pa) {
   uint32_t data_start = sizeof(prop_bt) + __BIONIC_ALIGN(PROP_VALUE_MAX, sizeof(uint_least32_t));
+  /* INFO: Clear the dirty backup area to not have any leftovers */
+  memset(prop_area_dirty_backup_area(pa), 0, __BIONIC_ALIGN(PROP_VALUE_MAX, sizeof(uint_least32_t)));
+
   uint32_t old_used = pa->bytes_used;
   if (old_used < data_start) return false;
 
