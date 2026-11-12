@@ -20,36 +20,32 @@ function waitForAnimationEnd(element, fallbackMs = 280) {
 export async function runMainPageTransition(currentPageContent, nextPageContent, direction = 1) {
   /* INFO: MD3 shared-axis style navigation keeps pages side-by-side and pushes them together. */
   const viewport = currentPageContent.parentElement
-  const incomingFrom = direction > 0 ? '100%' : '-100%'
-  const outgoingTo = direction > 0 ? '-100%' : '100%'
+  const incomingFrom = direction > 0 ? '30px' : '-30px'
+  const outgoingTo = direction > 0 ? '-30px' : '30px'
 
   viewport.classList.add('page_loader_main_viewport_transition')
 
   nextPageContent.style.display = 'block'
-  currentPageContent.style.setProperty('--page_loader_main_from', '0%')
-  currentPageContent.style.setProperty('--page_loader_main_to', outgoingTo)
-  nextPageContent.style.setProperty('--page_loader_main_from', incomingFrom)
-  nextPageContent.style.setProperty('--page_loader_main_to', '0%')
+  currentPageContent.style.setProperty('--page_loader_main_out_to', outgoingTo)
+  nextPageContent.style.setProperty('--page_loader_main_in_from', incomingFrom)
 
   currentPageContent.style.pointerEvents = 'none'
   nextPageContent.style.pointerEvents = 'none'
-  currentPageContent.classList.add('page_loader_main_transition', 'page_loader_main_push')
-  nextPageContent.classList.add('page_loader_main_transition', 'page_loader_main_push')
+  currentPageContent.classList.add('page_loader_main_transition', 'page_loader_main_out')
+  nextPageContent.classList.add('page_loader_main_transition', 'page_loader_main_in')
 
   /* INFO: Force style application before animation starts */
   nextPageContent.getBoundingClientRect()
 
   await Promise.all([
-    waitForAnimationEnd(currentPageContent, 440),
-    waitForAnimationEnd(nextPageContent, 440),
+    waitForAnimationEnd(currentPageContent, 380),
+    waitForAnimationEnd(nextPageContent, 380),
   ])
 
-  currentPageContent.classList.remove('page_loader_main_transition', 'page_loader_main_push')
-  nextPageContent.classList.remove('page_loader_main_transition', 'page_loader_main_push')
-  currentPageContent.style.removeProperty('--page_loader_main_from')
-  currentPageContent.style.removeProperty('--page_loader_main_to')
-  nextPageContent.style.removeProperty('--page_loader_main_from')
-  nextPageContent.style.removeProperty('--page_loader_main_to')
+  currentPageContent.classList.remove('page_loader_main_transition', 'page_loader_main_out')
+  nextPageContent.classList.remove('page_loader_main_transition', 'page_loader_main_in')
+  currentPageContent.style.removeProperty('--page_loader_main_out_to')
+  nextPageContent.style.removeProperty('--page_loader_main_in_from')
   currentPageContent.style.removeProperty('pointer-events')
   nextPageContent.style.removeProperty('pointer-events')
   viewport.classList.remove('page_loader_main_viewport_transition')

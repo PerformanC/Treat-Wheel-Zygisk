@@ -76,10 +76,6 @@ input:checked + .slider {
   margin-left: 3px;
 }
 
-.normal_title {
-  font-size: 16px;
-}
-
 .flag_content {
   padding: 4px 8px 4px 8px;
   border-radius: 5px;
